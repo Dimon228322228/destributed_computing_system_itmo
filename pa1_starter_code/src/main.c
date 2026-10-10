@@ -8,24 +8,19 @@
 #include "pipes.h"
 #include "process.h"
 
-static int parse_child_count(int argc, char *argv[])
-{
+static int parse_child_count(int argc, char *argv[]) {
     int i;
     int child_count = -1;
 
     for (i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-p") == 0) {
-            if (i + 1 >= argc) {
-                return -1;
-            }
+            if (i + 1 >= argc) return -1;
             child_count = atoi(argv[i + 1]);
             break;
         }
     }
 
-    if (child_count < 1 || child_count > MAX_PROCESS_ID) {
-        return -1;
-    }
+    if (child_count < 1 || child_count > MAX_PROCESS_ID) return -1;
 
     return child_count;
 }
@@ -37,17 +32,13 @@ int main(int argc, char *argv[])
     int role;
 
     child_count = parse_child_count(argc, argv);
-    if (child_count < 0) {
-        return 1;
-    }
+    if (child_count < 0) return 1;
 
     memset(&ctx, 0, sizeof(ctx));
     ctx.id = PARENT_ID;
     ctx.n = child_count + 1;
 
-    if (log_init() != 0) {
-        return 1;
-    }
+    if (log_init() != 0) return 1;
 
     if (create_pipes(&ctx) != 0) {
         log_close();
