@@ -1,0 +1,31 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.out
+a.out
+pa1
+*.exe
+
+# Runtime logs from the assignment
+events.log
+pipes.log
+
+# Submission archive
+pa1.tar.gz
+*.tar.gz
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Debug
+*.dSYM/
+core
+core.*
+vgcore.*
