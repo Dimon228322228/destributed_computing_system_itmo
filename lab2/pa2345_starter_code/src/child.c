@@ -117,7 +117,7 @@ static int done_phase(process_context *ctx) {
     sent_count = 0;
     total_to_send = ctx->n - 1;
     need = ctx->n - 2;
-    if (need < 0) return -1;
+    if (need < 0) need = 0;
     got = 0;
 
     while (sent_count < total_to_send || got < need) {
@@ -133,11 +133,15 @@ static int done_phase(process_context *ctx) {
 
         memset(&msg, 0, sizeof(msg));
         rc = receive_any_nowait(ctx, &msg);
-        if (rc == 0)
+        if (rc == 0) {
             if (msg.s_header.s_type == TRANSFER) {
                 if (handle_transfer(ctx, &msg) != 0) return -1;
-            } else if (msg.s_header.s_type == DONE) got++;
-        else if (rc < 0) return -1;
+            } else if (msg.s_header.s_type == DONE) {
+                got++;
+            }
+        } else if (rc < 0) {
+            return -1;
+        }
     }
 
     t = get_physical_time();
