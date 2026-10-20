@@ -96,7 +96,7 @@ static int done_phase(process_context *ctx) {
     t = get_physical_time();
     snprintf(buf, sizeof(buf), log_done_fmt, t, ctx->id, ctx->balance);
     log_event(buf);
-    if (send_text_multicast(ctx, DONE, buf) != 0) return -1;
+    if (send_payload_multicast(ctx, DONE, buf) != 0) return -1;
     need = ctx->n - 2; /* остальные дети */
     got = 0;
     while (got < need) {
@@ -138,7 +138,7 @@ int run_child(process_context *ctx) {
     t = get_physical_time();
     snprintf(buf, sizeof(buf), log_started_fmt, t, ctx->id, (int)getpid(), (int)getppid(), ctx->balance);
     log_event(buf);
-    if (send_text_multicast(ctx, STARTED, buf) != 0) return -1;
+    if (send_payload_multicast(ctx, STARTED, buf) != 0) return -1;
     if (wait_started_from_others(ctx) != 0) return -1;
     t = get_physical_time();
     snprintf(buf, sizeof(buf), log_received_all_started_fmt, t, ctx->id);
