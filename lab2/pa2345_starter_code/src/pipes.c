@@ -1,8 +1,19 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include "common.h"
 #include "pipes.h"
+
+static int set_nonblock(int fd) {
+    int flags;
+    if (fd < 0) return 0;
+    flags = fcntl(fd, F_GETFL);
+    if (flags < 0) return -1;
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
+    return 0;
+}
 
 int create_pipes(process_context *ctx) {
     local_id from;
@@ -17,6 +28,8 @@ int create_pipes(process_context *ctx) {
                 continue;
             }
             if (pipe(fd) != 0) return -1;
+            if (set_nonblock(fd[0]) != 0) return -1;
+            if (set_nonblock(fd[1]) != 0) return -1;
             ctx->pipes[from][to].rd = fd[0];
             ctx->pipes[from][to].wr = fd[1];
         }

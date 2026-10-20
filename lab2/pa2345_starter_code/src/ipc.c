@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stddef.h>
 #include <unistd.h>
 
@@ -10,10 +11,13 @@ static int write_full(int fd, const void *buf, size_t len) {
 
     while (done < len) {
         ssize_t n = write(fd, ptr + done, len - done);
-        if (n <= 0) return -1;
-        done += (size_t)n;
+        if (n > 0){
+            done += (size_t)n;
+            continue;
+        } 
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+        return -1;
     }
-
     return 0;
 }
 
@@ -23,8 +27,12 @@ static int read_full(int fd, void *buf, size_t len) {
 
     while (done < len) {
         ssize_t n = read(fd, ptr + done, len - done);
-        if (n <= 0) return -1;
-        done += (size_t)n;
+        if (n > 0){
+            done += (size_t)n;
+            continue;
+        } 
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+        return -1;
     }
 
     return 0;
