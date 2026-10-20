@@ -37,7 +37,6 @@ static int parse_args(int argc, char *argv[], process_context *ctx) {
 int main(int argc, char *argv[])
 {
     process_context ctx;
-    int child_count;
     int role;
 
     memset(&ctx, 0, sizeof(ctx));
