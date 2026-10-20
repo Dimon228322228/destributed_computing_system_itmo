@@ -85,15 +85,43 @@ int receive(void *self, local_id from, Message *msg) {
     return 0;
 }
 
+/* 0 — прочитали, 1 — пока пусто, -1 — ошибка */
+static int try_receive_from(process_context *ctx, local_id from, Message *msg) {
+    int fd = ctx->pipes[from][ctx->id].rd;
+    char *ptr = (char *)&msg->s_header;
+    size_t done = 0;
+    size_t need = sizeof(MessageHeader);
+    if (fd < 0) return 1;
+    while (done < need) {
+        ssize_t n = read(fd, ptr + done, need - done);
+        if (n > 0) {
+            done += (size_t)n;
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            if (done == 0) return 1; /* нечего читать — следующий from */
+            continue; /* уже начали сообщение — дочитываем */
+        }
+        return -1;
+    }
+    if (msg->s_header.s_payload_len > MAX_PAYLOAD_LEN) return -1;
+    if (msg->s_header.s_payload_len > 0) 
+        if (read_full(fd, msg->s_payload, msg->s_header.s_payload_len) != 0) 
+            return -1;
+    return 0;
+}
+
 int receive_any(void *self, Message *msg) {
     process_context *ctx = self;
     local_id from;
     if (ctx == NULL || msg == NULL) return -1;
-
-    for (from = 0; from < ctx->n; ++from) {
-        if (from == ctx->id) continue;
-        if (receive(ctx, from, msg) == 0) return 0;
+    for (;;) {
+        for (from = 0; from < ctx->n; ++from) {
+            int rc;
+            if (from == ctx->id) continue;
+            rc = try_receive_from(ctx, from, msg);
+            if (rc == 0) return 0;
+            if (rc < 0) return -1;
+        }
     }
-
-    return -1;
 }
