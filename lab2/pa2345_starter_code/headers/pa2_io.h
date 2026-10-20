@@ -18,4 +18,8 @@ typedef struct {
     BalanceHistory history;
 } process_context;
 
+/* 0 — успех, 1 — пока нельзя / пусто, -1 — ошибка */
+int send_nowait(void *self, local_id dst, const Message *msg);
+int receive_any_nowait(void *self, Message *msg);
+
 #endif

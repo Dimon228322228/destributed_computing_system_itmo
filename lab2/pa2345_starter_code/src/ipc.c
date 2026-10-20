@@ -85,6 +85,54 @@ int receive(void *self, local_id from, Message *msg) {
     return 0;
 }
 
+/* 0 — записали целиком, 1 — буфер пока полный (ничего не начали), -1 — ошибка */
+static int try_write_full(int fd, const void *buf, size_t len) {
+    const char *ptr = buf;
+    size_t done = 0;
+    while (done < len) {
+        ssize_t n = write(fd, ptr + done, len - done);
+        if (n > 0) {
+            done += (size_t)n;
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            if (done == 0) return 1;
+            continue; /* сообщение уже начато — дописываем */
+        }
+        return -1;
+    }
+    return 0;
+}
+
+int send_nowait(void *self, local_id dst, const Message *msg) {
+    process_context *ctx = self;
+    int fd;
+    int rc;
+    if (ctx == NULL || msg == NULL) return -1;
+    if (dst < 0 || dst >= ctx->n || dst == ctx->id) return -1;
+    fd = ctx->pipes[ctx->id][dst].wr;
+    if (fd < 0) return -1;
+    if (try_write_full(fd, &msg->s_header, sizeof(MessageHeader)) != 0) return -1;
+    if (msg->s_header.s_payload_len > 0) 
+        if (try_write_full(fd, msg->s_payload, msg->s_header.s_payload_len) != 0) 
+            return -1;
+    return 0;
+}
+
+int receive_any_nowait(void *self, Message *msg) {
+    process_context *ctx = self;
+    local_id from;
+    if (ctx == NULL || msg == NULL) return -1;
+    for (from = 0; from < ctx->n; ++from) {
+        int rc;
+        if (from == ctx->id) continue;
+        rc = try_receive_from(ctx, from, msg);
+        if (rc == 0) return 0;
+        if (rc < 0) return -1;
+    }
+    return 1; /* ни у кого пока нет данных */
+}
+
 /* 0 — прочитали, 1 — пока пусто, -1 — ошибка */
 static int try_receive_from(process_context *ctx, local_id from, Message *msg) {
     int fd = ctx->pipes[from][ctx->id].rd;

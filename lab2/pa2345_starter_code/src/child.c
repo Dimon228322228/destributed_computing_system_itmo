@@ -86,28 +86,60 @@ static int work_until_stop(process_context *ctx) {
     }
 }
 
-/* после STOP: шлём DONE, ждём DONE от других детей, по пути ещё TRANSFER */
 static int done_phase(process_context *ctx) {
     Message msg;
+    Message done_msg;
     char buf[MAX_PAYLOAD_LEN];
+    int sent[MAX_PROCESS_ID + 1];
+    int sent_count;
+    int total_to_send;
     int need;
     int got;
+    int rc;
+    local_id dst;
     timestamp_t t;
+    size_t len;
+
     t = get_physical_time();
     snprintf(buf, sizeof(buf), log_done_fmt, t, ctx->id, ctx->balance);
     log_event(buf);
-    if (send_payload_multicast(ctx, DONE, buf) != 0) return -1;
-    need = ctx->n - 2; /* остальные дети */
+
+    memset(&done_msg, 0, sizeof(done_msg));
+    len = strlen(buf);
+    done_msg.s_header.s_magic = MESSAGE_MAGIC;
+    done_msg.s_header.s_payload_len = (uint16_t)len;
+    done_msg.s_header.s_type = DONE;
+    done_msg.s_header.s_local_time = get_physical_time();
+    memcpy(done_msg.s_payload, buf, len);
+
+    memset(sent, 0, sizeof(sent));
+    sent[ctx->id] = 1;
+    sent_count = 0;
+    total_to_send = ctx->n - 1;
+    need = ctx->n - 2;
+    if (need < 0) return -1;
     got = 0;
-    while (got < need) {
-        memset(&msg, 0, sizeof(msg));
-        if (receive_any(ctx, &msg) != 0) return -1;
-        if (msg.s_header.s_type == TRANSFER) {
-            if (handle_transfer(ctx, &msg) != 0) return -1;
-        } else if (msg.s_header.s_type == DONE) {
-            got++;
+
+    while (sent_count < total_to_send || got < need) {
+        if (sent_count < total_to_send) {
+            for (dst = 0; dst < ctx->n; ++dst) {
+                if (sent[dst]) continue;
+                rc = send_nowait(ctx, dst, &done_msg);
+                if (rc == 0) sent[dst] = 1, sent_count++;
+                else if (rc < 0) return -1;
+                break;
+            }
         }
+
+        memset(&msg, 0, sizeof(msg));
+        rc = receive_any_nowait(ctx, &msg);
+        if (rc == 0)
+            if (msg.s_header.s_type == TRANSFER) {
+                if (handle_transfer(ctx, &msg) != 0) return -1;
+            } else if (msg.s_header.s_type == DONE) got++;
+        else if (rc < 0) return -1;
     }
+
     t = get_physical_time();
     snprintf(buf, sizeof(buf), log_received_all_done_fmt, t, ctx->id);
     log_event(buf);
