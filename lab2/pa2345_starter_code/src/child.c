@@ -39,6 +39,9 @@ static int send_payload_multicast(process_context *ctx, MessageType type, const 
 }
 
 int run_child(process_context *ctx) {
+    ctx->balance = ctx->start_balances[ctx->id];
+    ctx->history.s_id = ctx->id;
+    ctx->history.s_history_len = 0;
     char buf[MAX_PAYLOAD_LEN];
 
     snprintf(buf, sizeof(buf), log_started_fmt,
