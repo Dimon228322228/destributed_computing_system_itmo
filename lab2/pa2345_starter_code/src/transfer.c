@@ -4,7 +4,7 @@
 #include "ipc.h"
 #include "pa2_io.h"
 
-void transfer(void *parent_data, local_id src, local_id dst, balance_t amount){
+void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     process_context *ctx = parent_data;
     Message msg;
     TransferOrder order;
@@ -24,7 +24,7 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount){
 
     send(ctx, src, &msg);
 
-    /* ждём ACK от получателя перевода */
+    /* wait for ACK from receiver */
     memset(&msg, 0, sizeof(msg));
     receive(ctx, dst, &msg);
 }

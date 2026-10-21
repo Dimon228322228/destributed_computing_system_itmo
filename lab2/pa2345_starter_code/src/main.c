@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,7 +10,6 @@
 static int parse_args(int argc, char *argv[], process_context *ctx) {
     int i;
     int child_count = -1;
-    int bal_i = 0;
 
     for (i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-p") == 0) {
@@ -22,20 +20,21 @@ static int parse_args(int argc, char *argv[], process_context *ctx) {
         }
     }
 
-    if (child_count < 1 || child_count > MAX_PROCESS_ID) return -1;
-
-    if (i + child_count > argc) return -1;
-
-    for (bal_i = 1; bal_i <= child_count; ++bal_i) {
+    if (child_count < 1 || child_count > MAX_PROCESS_ID || i + child_count > argc) return -1;
+    
+    for (int bal_i = 1; bal_i <= child_count; ++bal_i) 
         ctx->start_balances[bal_i] = (balance_t)atoi(argv[i + bal_i - 1]);
-    }
 
     ctx->n = child_count + 1;
     return child_count;
 }
 
-int main(int argc, char *argv[])
-{
+static int error_exit(void){
+    log_close();
+    return 1;
+}
+
+int main(int argc, char *argv[]) {
     process_context ctx;
     int role;
 
@@ -46,32 +45,17 @@ int main(int argc, char *argv[])
 
     if (log_init() != 0) return 1;
 
-    if (create_pipes(&ctx) != 0) {
-        log_close();
-        return 1;
-    }
+    if (create_pipes(&ctx) != 0) return error_exit();
 
-    if (log_pipes(&ctx) != 0) {
-        log_close();
-        return 1;
-    }
+    if (log_pipes(&ctx) != 0) return error_exit();
 
     role = start_processes(&ctx);
-    if (role < 0) {
-        log_close();
-        return 1;
-    }
+    if (role < 0) return error_exit();
 
     if (role == PROCESS_ROLE_CHILD) {
-        if (run_child(&ctx) != 0) {
-            log_close();
-            return 1;
-        }
+        if (run_child(&ctx) != 0) return error_exit();
     } else {
-        if (run_parent(&ctx) != 0) {
-            log_close();
-            return 1;
-        }
+        if (run_parent(&ctx) != 0) return error_exit();
     }
 
     log_close();

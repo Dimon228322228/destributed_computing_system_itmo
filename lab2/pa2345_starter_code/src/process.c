@@ -5,11 +5,8 @@
 #include "process.h"
 
 int start_processes(process_context *ctx) {
-    local_id child_id;
-    pid_t pid;
-
-    for (child_id = 1; child_id < ctx->n; ++child_id) {
-        pid = fork();
+    for (local_id child_id = 1; child_id < ctx->n; ++child_id) {
+        pid_t pid = fork();
         if (pid < 0) return -1;
 
         if (pid == 0) {

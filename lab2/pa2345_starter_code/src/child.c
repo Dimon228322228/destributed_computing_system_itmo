@@ -11,16 +11,12 @@
 
 static int wait_from_other_children(process_context *ctx, MessageType type) {
     Message msg;
-    local_id from;
-
-    for (from = 1; from < ctx->n; ++from) {
+    for (local_id from = 1; from < ctx->n; ++from) {
         if (from == ctx->id) continue;
-
         memset(&msg, 0, sizeof(msg));
         if (receive(ctx, from, &msg) != 0) return -1;
         if (msg.s_header.s_type != type) return -1;
     }
-
     return 0;
 }
 
@@ -30,27 +26,22 @@ static int wait_started_from_others(process_context *ctx) {
 
 static int send_payload_multicast(process_context *ctx, MessageType type, const char *text) {
     Message msg;
-    size_t len;
-
     memset(&msg, 0, sizeof(msg));
-    len = strlen(text);
-
+    size_t len = strlen(text);
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_payload_len = (uint16_t)len;
-    msg.s_header.s_type = (int16_t)type;
+    msg.s_header.s_type = type;
     msg.s_header.s_local_time = get_physical_time();
     memcpy(msg.s_payload, text, len);
-
     return send_multicast(ctx, &msg);
 }
 
 static int handle_transfer(process_context *ctx, Message *msg) {
     TransferOrder order;
-    timestamp_t t;
     char buf[MAX_PAYLOAD_LEN];
     Message ack;
     memcpy(&order, msg->s_payload, sizeof(order));
-    t = get_physical_time();
+    timestamp_t t = get_physical_time();
     if (order.s_src == ctx->id) {
         ctx->balance -= order.s_amount;
         update_history(&ctx->history, ctx->balance, t);
@@ -87,63 +78,49 @@ static int work_until_stop(process_context *ctx) {
 }
 
 static int done_phase(process_context *ctx) {
-    Message msg;
-    Message done_msg;
     char buf[MAX_PAYLOAD_LEN];
-    int sent[MAX_PROCESS_ID + 1];
-    int sent_count;
-    int total_to_send;
-    int need;
-    int got;
-    int rc;
-    local_id dst;
-    timestamp_t t;
-    size_t len;
-
-    t = get_physical_time();
+    timestamp_t t = get_physical_time();
     snprintf(buf, sizeof(buf), log_done_fmt, t, ctx->id, ctx->balance);
     log_event(buf);
-
+    Message msg;
+    Message done_msg;
+    memset(&msg, 0, sizeof(msg));
     memset(&done_msg, 0, sizeof(done_msg));
-    len = strlen(buf);
     done_msg.s_header.s_magic = MESSAGE_MAGIC;
-    done_msg.s_header.s_payload_len = (uint16_t)len;
+    done_msg.s_header.s_payload_len = (uint16_t)strlen(buf);
     done_msg.s_header.s_type = DONE;
     done_msg.s_header.s_local_time = get_physical_time();
-    memcpy(done_msg.s_payload, buf, len);
+    memcpy(done_msg.s_payload, buf, strlen(buf));
 
-    memset(sent, 0, sizeof(sent));
+    int sent[MAX_PROCESS_ID + 1] = {0};
     sent[ctx->id] = 1;
-    sent_count = 0;
-    total_to_send = ctx->n - 1;
-    need = ctx->n - 2;
-    if (need < 0) need = 0;
-    got = 0;
-
-    while (sent_count < total_to_send || got < need) {
-        if (sent_count < total_to_send) {
-            for (dst = 0; dst < ctx->n; ++dst) {
+    int sent_count = 0;
+    int need = ctx->n - 2 >= 0 ? ctx->n - 2 : 0;
+    int got = 0;
+    int rc;
+    while (sent_count < ctx->n - 1 || got < need) {
+        if (sent_count < ctx->n - 1) {
+            for (local_id dst = 0; dst < ctx->n; ++dst) {
                 if (sent[dst]) continue;
                 rc = send_nowait(ctx, dst, &done_msg);
-                if (rc == 0) sent[dst] = 1, sent_count++;
-                else if (rc < 0) return -1;
+                if (rc == 0) {
+                    sent[dst] = 1;
+                    sent_count++;
+                } else if (rc < 0) return -1;
                 break;
             }
         }
-
-        memset(&msg, 0, sizeof(msg));
-        rc = receive_any_nowait(ctx, &msg);
-        if (rc == 0) {
-            if (msg.s_header.s_type == TRANSFER) {
-                if (handle_transfer(ctx, &msg) != 0) return -1;
-            } else if (msg.s_header.s_type == DONE) {
-                got++;
-            }
-        } else if (rc < 0) {
-            return -1;
+        if (got < need) {
+            rc = receive_any_nowait(ctx, &msg);
+            if (rc == 0) {
+                if (msg.s_header.s_type == TRANSFER) {
+                    if (handle_transfer(ctx, &msg) != 0) return -1;
+                } else if (msg.s_header.s_type == DONE) {
+                    got++;
+                }
+            } else if (rc < 0) return -1;
         }
     }
-
     t = get_physical_time();
     snprintf(buf, sizeof(buf), log_received_all_done_fmt, t, ctx->id);
     log_event(buf);
@@ -151,11 +128,10 @@ static int done_phase(process_context *ctx) {
 }
 
 static int send_balance_history(process_context *ctx) {
-    Message msg;
-    uint16_t len;
     update_history(&ctx->history, ctx->balance, get_physical_time());
+    Message msg;
     memset(&msg, 0, sizeof(msg));
-    len = (uint16_t)(offsetof(BalanceHistory, s_history) + sizeof(BalanceState) * ctx->history.s_history_len);
+    uint16_t len = (uint16_t)(offsetof(BalanceHistory, s_history) + sizeof(BalanceState) * ctx->history.s_history_len);
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_type = BALANCE_HISTORY;
     msg.s_header.s_local_time = get_physical_time();
@@ -166,21 +142,24 @@ static int send_balance_history(process_context *ctx) {
 
 int run_child(process_context *ctx) {
     char buf[MAX_PAYLOAD_LEN];
-    timestamp_t t;
+    
     ctx->balance = ctx->start_balances[ctx->id];
     ctx->history.s_id = ctx->id;
     ctx->history.s_history_len = 0;
     update_history(&ctx->history, ctx->balance, get_physical_time());
-    t = get_physical_time();
-    snprintf(buf, sizeof(buf), log_started_fmt, t, ctx->id, (int)getpid(), (int)getppid(), ctx->balance);
+
+    snprintf(buf, sizeof(buf), log_started_fmt, get_physical_time(), ctx->id, (int)getpid(), (int)getppid(), ctx->balance);
     log_event(buf);
+    
     if (send_payload_multicast(ctx, STARTED, buf) != 0) return -1;
     if (wait_started_from_others(ctx) != 0) return -1;
-    t = get_physical_time();
-    snprintf(buf, sizeof(buf), log_received_all_started_fmt, t, ctx->id);
+
+    snprintf(buf, sizeof(buf), log_received_all_started_fmt, get_physical_time(), ctx->id);
     log_event(buf);
+
     if (work_until_stop(ctx) != 0) return -1;
     if (done_phase(ctx) != 0) return -1;
     if (send_balance_history(ctx) != 0) return -1;
+
     return 0;
 }

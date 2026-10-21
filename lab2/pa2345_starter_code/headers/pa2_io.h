@@ -18,7 +18,7 @@ typedef struct {
     BalanceHistory history;
 } process_context;
 
-/* 0 — успех, 1 — пока нельзя / пусто, -1 — ошибка */
+/* 0 — SUCCESS, 1 — WAIT or EMPTY, -1 — FAIL */
 int send_nowait(void *self, local_id dst, const Message *msg);
 int receive_any_nowait(void *self, Message *msg);
 

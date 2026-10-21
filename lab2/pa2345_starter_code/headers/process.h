@@ -9,9 +9,8 @@ typedef enum {
 } process_role;
 
 /*
- * Создаёт детей, в каждом процессе выставляет ctx->id
- * и закрывает лишние концы pipe.
- * Возвращает роль текущего процесса, либо -1 при ошибке.
+ * Create children and per each one set ctx->id then close unused pipes.
+ * Return ROLE of current thread, otherwise -1 that means FAIL.
  */
 int start_processes(process_context *ctx);
 

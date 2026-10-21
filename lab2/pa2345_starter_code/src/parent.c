@@ -8,9 +8,8 @@
 
 static int receive_from_all_children(process_context *ctx, MessageType type) {
     Message msg;
-    local_id from;
 
-    for (from = 1; from < ctx->n; ++from) {
+    for (local_id from = 1; from < ctx->n; ++from) {
         memset(&msg, 0, sizeof(msg));
         if (receive(ctx, from, &msg) != 0) return -1;
         if (msg.s_header.s_type != type) return -1;
@@ -21,24 +20,22 @@ static int receive_from_all_children(process_context *ctx, MessageType type) {
 
 static int send_stop_to_children(process_context *ctx) {
     Message msg;
-    local_id dst;
     memset(&msg, 0, sizeof(msg));
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_type = STOP;
     msg.s_header.s_local_time = get_physical_time();
     msg.s_header.s_payload_len = 0;
-    for (dst = 1; dst < ctx->n; ++dst) 
+    for (local_id dst = 1; dst < ctx->n; ++dst) 
         if (send(ctx, dst, &msg) != 0) return -1;
     return 0;
 }
 
 static int collect_history(process_context *ctx, AllHistory *all) {
     Message msg;
-    local_id from;
     memset(all, 0, sizeof(*all));
     all->s_history_len = (uint8_t)(ctx->n - 1);
 
-    for (from = 1; from < ctx->n; ++from) {
+    for (local_id from = 1; from < ctx->n; ++from) {
         memset(&msg, 0, sizeof(msg));
         if (receive(ctx, from, &msg) != 0) return -1;
         if (msg.s_header.s_type != BALANCE_HISTORY) return -1;
@@ -51,8 +48,6 @@ static int collect_history(process_context *ctx, AllHistory *all) {
 
 int run_parent(process_context *ctx) {
     AllHistory all;
-    int i;
-    int status;
     local_id max_id = (local_id)(ctx->n - 1);
     if (receive_from_all_children(ctx, STARTED) != 0) return -1;
     bank_robbery(ctx, max_id);
@@ -60,7 +55,7 @@ int run_parent(process_context *ctx) {
     if (receive_from_all_children(ctx, DONE) != 0) return -1;
     if (collect_history(ctx, &all) != 0) return -1;
     print_history(&all);
-    for (i = 1; i < ctx->n; ++i) 
-        if (wait(&status) < 0) return -1;
+    for (int i = 1; i < ctx->n; ++i) 
+        if (wait(NULL) < 0) return -1;
     return 0;
 }

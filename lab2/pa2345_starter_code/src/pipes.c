@@ -1,27 +1,23 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include "common.h"
 #include "pipes.h"
 
 static int set_nonblock(int fd) {
-    int flags;
     if (fd < 0) return 0;
-    flags = fcntl(fd, F_GETFL);
+    int flags = fcntl(fd, F_GETFL);
     if (flags < 0) return -1;
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
     return 0;
 }
 
 int create_pipes(process_context *ctx) {
-    local_id from;
-    local_id to;
     int fd[2];
 
-    for (from = 0; from < ctx->n; ++from) {
-        for (to = 0; to < ctx->n; ++to) {
+    for (local_id from = 0; from < ctx->n; ++from) {
+        for (local_id to = 0; to < ctx->n; ++to) {
             if (from == to) {
                 ctx->pipes[from][to].rd = -1;
                 ctx->pipes[from][to].wr = -1;
@@ -38,15 +34,11 @@ int create_pipes(process_context *ctx) {
 }
 
 int log_pipes(const process_context *ctx) {
-    FILE *file;
-    local_id from;
-    local_id to;
-
-    file = fopen(pipes_log, "w");
+    FILE *file = fopen(pipes_log, "w");
     if (file == NULL) return -1;
 
-    for (from = 0; from < ctx->n; ++from) {
-        for (to = 0; to < ctx->n; ++to) {
+    for (local_id from = 0; from < ctx->n; ++from) {
+        for (local_id to = 0; to < ctx->n; ++to) {
             if (from == to) continue;
             fprintf(file, "pipe %d -> %d: rd=%d wr=%d\n", from, to, ctx->pipes[from][to].rd, ctx->pipes[from][to].wr);
         }
@@ -57,12 +49,10 @@ int log_pipes(const process_context *ctx) {
 }
 
 void close_unused_pipes(process_context *ctx) {
-    local_id from;
-    local_id to;
     local_id me = ctx->id;
 
-    for (from = 0; from < ctx->n; ++from) {
-        for (to = 0; to < ctx->n; ++to) {
+    for (local_id from = 0; from < ctx->n; ++from) {
+        for (local_id to = 0; to < ctx->n; ++to) {
             if (from == to) continue;
 
             if (from == me) { // write to this pipe so there is no need to read from it
