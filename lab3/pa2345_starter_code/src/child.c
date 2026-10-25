@@ -8,6 +8,7 @@
 #include "ipc.h"
 #include "log.h"
 #include "pa2345.h"
+#include "lamport.h"
 
 static int wait_from_other_children(process_context *ctx, MessageType type) {
     Message msg;
@@ -24,14 +25,14 @@ static int wait_started_from_others(process_context *ctx) {
     return wait_from_other_children(ctx, STARTED);
 }
 
-static int send_payload_multicast(process_context *ctx, MessageType type, const char *text) {
+static int send_payload_multicast(process_context *ctx, MessageType type, const char *text, timestamp_t t) {
     Message msg;
     memset(&msg, 0, sizeof(msg));
     size_t len = strlen(text);
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_payload_len = (uint16_t)len;
     msg.s_header.s_type = type;
-    msg.s_header.s_local_time = get_physical_time();
+    msg.s_header.s_local_time = t;
     memcpy(msg.s_payload, text, len);
     return send_multicast(ctx, &msg);
 }
@@ -41,23 +42,24 @@ static int handle_transfer(process_context *ctx, Message *msg) {
     char buf[MAX_PAYLOAD_LEN];
     Message ack;
     memcpy(&order, msg->s_payload, sizeof(order));
-    timestamp_t t = get_physical_time();
     if (order.s_src == ctx->id) {
+        lamport_tick(ctx);
         ctx->balance -= order.s_amount;
-        update_history(&ctx->history, ctx->balance, t);
-        snprintf(buf, sizeof(buf), log_transfer_out_fmt, t, ctx->id, order.s_amount, order.s_dst);
+        update_history(&ctx->history, ctx->balance, get_lamport_time());
+        snprintf(buf, sizeof(buf), log_transfer_out_fmt, get_lamport_time(), ctx->id, order.s_amount, order.s_dst);
         log_event(buf);
-        msg->s_header.s_local_time = t;
+        msg->s_header.s_local_time = get_lamport_time();
         if (send(ctx, order.s_dst, msg) != 0) return -1;
     } else if (order.s_dst == ctx->id) {
+        lamport_tick(ctx);
         ctx->balance += order.s_amount;
-        update_history(&ctx->history, ctx->balance, t);
-        snprintf(buf, sizeof(buf), log_transfer_in_fmt, t, ctx->id, order.s_amount, order.s_src);
+        update_history(&ctx->history, ctx->balance, get_lamport_time());
+        snprintf(buf, sizeof(buf), log_transfer_in_fmt, get_lamport_time(), ctx->id, order.s_amount, order.s_src);
         log_event(buf);
         memset(&ack, 0, sizeof(ack));
         ack.s_header.s_magic = MESSAGE_MAGIC;
         ack.s_header.s_type = ACK;
-        ack.s_header.s_local_time = t;
+        ack.s_header.s_local_time = get_lamport_time();
         ack.s_header.s_payload_len = 0;
         if (send(ctx, PARENT_ID, &ack) != 0) return -1;
     }
@@ -79,17 +81,18 @@ static int work_until_stop(process_context *ctx) {
 
 static int done_phase(process_context *ctx) {
     char buf[MAX_PAYLOAD_LEN];
-    timestamp_t t = get_physical_time();
-    snprintf(buf, sizeof(buf), log_done_fmt, t, ctx->id, ctx->balance);
-    log_event(buf);
     Message msg;
     Message done_msg;
+    lamport_tick(ctx);
+    timestamp_t t = get_lamport_time();
+    snprintf(buf, sizeof(buf), log_done_fmt, t, ctx->id, ctx->balance);
+    log_event(buf);
     memset(&msg, 0, sizeof(msg));
     memset(&done_msg, 0, sizeof(done_msg));
     done_msg.s_header.s_magic = MESSAGE_MAGIC;
     done_msg.s_header.s_payload_len = (uint16_t)strlen(buf);
     done_msg.s_header.s_type = DONE;
-    done_msg.s_header.s_local_time = get_physical_time();
+    done_msg.s_header.s_local_time = t;
     memcpy(done_msg.s_payload, buf, strlen(buf));
 
     int sent[MAX_PROCESS_ID + 1] = {0};
@@ -121,20 +124,21 @@ static int done_phase(process_context *ctx) {
             } else if (rc < 0) return -1;
         }
     }
-    t = get_physical_time();
+    t = get_lamport_time();
     snprintf(buf, sizeof(buf), log_received_all_done_fmt, t, ctx->id);
     log_event(buf);
     return 0;
 }
 
 static int send_balance_history(process_context *ctx) {
-    update_history(&ctx->history, ctx->balance, get_physical_time());
+    lamport_tick(ctx);
+    update_history(&ctx->history, ctx->balance, get_lamport_time());
     Message msg;
     memset(&msg, 0, sizeof(msg));
     uint16_t len = (uint16_t)(offsetof(BalanceHistory, s_history) + sizeof(BalanceState) * ctx->history.s_history_len);
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_type = BALANCE_HISTORY;
-    msg.s_header.s_local_time = get_physical_time();
+    msg.s_header.s_local_time = get_lamport_time();
     msg.s_header.s_payload_len = len;
     memcpy(msg.s_payload, &ctx->history, len);
     return send(ctx, PARENT_ID, &msg);
@@ -146,15 +150,16 @@ int run_child(process_context *ctx) {
     ctx->balance = ctx->start_balances[ctx->id];
     ctx->history.s_id = ctx->id;
     ctx->history.s_history_len = 0;
-    update_history(&ctx->history, ctx->balance, get_physical_time());
+    update_history(&ctx->history, ctx->balance, get_lamport_time());
 
-    snprintf(buf, sizeof(buf), log_started_fmt, get_physical_time(), ctx->id, (int)getpid(), (int)getppid(), ctx->balance);
+    lamport_tick(ctx);
+    snprintf(buf, sizeof(buf), log_started_fmt, get_lamport_time(), ctx->id, (int)getpid(), (int)getppid(), ctx->balance);
     log_event(buf);
     
-    if (send_payload_multicast(ctx, STARTED, buf) != 0) return -1;
+    if (send_payload_multicast(ctx, STARTED, buf, get_lamport_time()) != 0) return -1;
     if (wait_started_from_others(ctx) != 0) return -1;
 
-    snprintf(buf, sizeof(buf), log_received_all_started_fmt, get_physical_time(), ctx->id);
+    snprintf(buf, sizeof(buf), log_received_all_started_fmt, get_lamport_time(), ctx->id);
     log_event(buf);
 
     if (work_until_stop(ctx) != 0) return -1;

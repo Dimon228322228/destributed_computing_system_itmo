@@ -5,6 +5,7 @@
 #include "banking.h"
 #include "ipc.h"
 #include "parent.h"
+#include "lamport.h"
 
 static int receive_from_all_children(process_context *ctx, MessageType type) {
     Message msg;
@@ -21,9 +22,10 @@ static int receive_from_all_children(process_context *ctx, MessageType type) {
 static int send_stop_to_children(process_context *ctx) {
     Message msg;
     memset(&msg, 0, sizeof(msg));
+    lamport_tick(ctx);
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_type = STOP;
-    msg.s_header.s_local_time = get_physical_time();
+    msg.s_header.s_local_time = get_lamport_time();
     msg.s_header.s_payload_len = 0;
     for (local_id dst = 1; dst < ctx->n; ++dst) 
         if (send(ctx, dst, &msg) != 0) return -1;
