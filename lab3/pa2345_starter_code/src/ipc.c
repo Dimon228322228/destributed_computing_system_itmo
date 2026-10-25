@@ -5,6 +5,7 @@
 
 #include "pa2_io.h"
 #include "ipc.h"
+#include "lamport.h"
 
 /* block != 0: inf cycle on EAGAIN (as before)
    block == 0: if EAGAIN/EOF and done==0 → return 1
@@ -84,6 +85,7 @@ int receive(void *self, local_id from, Message *msg) {
     if (msg->s_header.s_payload_len > 0) 
         if (read_full(fd, msg->s_payload, msg->s_header.s_payload_len, 1) != 0) 
             return -1;
+    lamport_on_receive(ctx, msg->s_header.s_local_time);
     return 0;
 }
 
@@ -97,6 +99,7 @@ static int try_receive_from(process_context *ctx, local_id from, Message *msg) {
     if (msg->s_header.s_payload_len > 0) 
         if (read_full(fd, msg->s_payload, msg->s_header.s_payload_len, 1) != 0) 
             return -1;
+    lamport_on_receive(ctx, msg->s_header.s_local_time);
     return 0;
 }
 
