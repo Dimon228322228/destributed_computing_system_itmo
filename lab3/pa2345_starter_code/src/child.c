@@ -99,6 +99,7 @@ static int done_phase(process_context *ctx) {
     done_msg.s_header.s_type = DONE;
     done_msg.s_header.s_local_time = t;
     memcpy(done_msg.s_payload, buf, strlen(buf));
+    timestamp_t prepared_time = t;
 
     int sent[MAX_PROCESS_ID + 1] = {0};
     sent[ctx->id] = 1;
@@ -110,10 +111,16 @@ static int done_phase(process_context *ctx) {
         if (sent_count < ctx->n - 1) {
             for (local_id dst = 0; dst < ctx->n; ++dst) {
                 if (sent[dst]) continue;
+                if (prepared_time == 0 || get_lamport_time() != prepared_time) {
+                    lamport_tick(ctx);
+                    prepared_time = get_lamport_time();
+                    done_msg.s_header.s_local_time = prepared_time;
+                }
                 rc = send_nowait(ctx, dst, &done_msg);
                 if (rc == 0) {
                     sent[dst] = 1;
                     sent_count++;
+                    prepared_time = 0;
                 } else if (rc < 0) return -1;
                 break;
             }

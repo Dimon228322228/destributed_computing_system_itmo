@@ -48,6 +48,24 @@ static int collect_history(process_context *ctx, AllHistory *all) {
     return 0;
 }
 
+static void align_histories(AllHistory *all) {
+    uint8_t max_len = 0;
+    for (uint8_t i = 0; i < all->s_history_len; ++i)
+        if (all->s_history[i].s_history_len > max_len)
+            max_len = all->s_history[i].s_history_len;
+    for (uint8_t i = 0; i < all->s_history_len; ++i) {
+        BalanceHistory *h = &all->s_history[i];
+        while (h->s_history_len < max_len) {
+            BalanceState *prev = &h->s_history[h->s_history_len - 1];
+            BalanceState *cur = &h->s_history[h->s_history_len];
+            cur->s_balance = prev->s_balance;
+            cur->s_time = (timestamp_t)h->s_history_len;
+            cur->s_balance_pending_in = 0;
+            h->s_history_len++;
+        }
+    }
+}
+
 int run_parent(process_context *ctx) {
     AllHistory all;
     local_id max_id = (local_id)(ctx->n - 1);
@@ -56,6 +74,7 @@ int run_parent(process_context *ctx) {
     if (send_stop_to_children(ctx) != 0) return -1;
     if (receive_from_all_children(ctx, DONE) != 0) return -1;
     if (collect_history(ctx, &all) != 0) return -1;
+    align_histories(&all);
     print_history(&all);
     for (int i = 1; i < ctx->n; ++i) 
         if (wait(NULL) < 0) return -1;
