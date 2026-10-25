@@ -12,11 +12,13 @@ int start_processes(process_context *ctx) {
         if (pid == 0) {
             ctx->id = child_id;
             close_unused_pipes(ctx);
+            lamport_set_context(ctx);
             return PROCESS_ROLE_CHILD;
         }
     }
 
     ctx->id = PARENT_ID;
     close_unused_pipes(ctx);
+    lamport_set_context(ctx);
     return PROCESS_ROLE_PARENT;
 }

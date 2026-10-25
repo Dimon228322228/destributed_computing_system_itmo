@@ -16,6 +16,7 @@ typedef struct {
     balance_t start_balances[MAX_PROCESS_ID + 1];
     balance_t balance;
     BalanceHistory history;
+    timestamp_t lamport_time;
 } process_context;
 
 /* 0 — SUCCESS, 1 — WAIT or EMPTY, -1 — FAIL */
