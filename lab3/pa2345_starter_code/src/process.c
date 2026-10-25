@@ -3,6 +3,7 @@
 
 #include "pipes.h"
 #include "process.h"
+#include "lamport.h"
 
 int start_processes(process_context *ctx) {
     for (local_id child_id = 1; child_id < ctx->n; ++child_id) {

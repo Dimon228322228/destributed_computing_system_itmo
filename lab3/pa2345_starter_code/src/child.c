@@ -41,25 +41,30 @@ static int handle_transfer(process_context *ctx, Message *msg) {
     TransferOrder order;
     char buf[MAX_PAYLOAD_LEN];
     Message ack;
+    timestamp_t t_send, t;
     memcpy(&order, msg->s_payload, sizeof(order));
     if (order.s_src == ctx->id) {
         lamport_tick(ctx);
+        t = get_lamport_time();
         ctx->balance -= order.s_amount;
-        update_history(&ctx->history, ctx->balance, get_lamport_time());
-        snprintf(buf, sizeof(buf), log_transfer_out_fmt, get_lamport_time(), ctx->id, order.s_amount, order.s_dst);
+        update_history(&ctx->history, ctx->balance, t, 0);
+        snprintf(buf, sizeof(buf), log_transfer_out_fmt, t, ctx->id, order.s_amount, order.s_dst);
         log_event(buf);
-        msg->s_header.s_local_time = get_lamport_time();
+        msg->s_header.s_local_time = t;
         if (send(ctx, order.s_dst, msg) != 0) return -1;
     } else if (order.s_dst == ctx->id) {
+        t_send = msg->s_header.s_local_time;
         lamport_tick(ctx);
+        t = get_lamport_time();
+        add_pending(&ctx->history, t_send, t, order.s_amount);
         ctx->balance += order.s_amount;
-        update_history(&ctx->history, ctx->balance, get_lamport_time());
-        snprintf(buf, sizeof(buf), log_transfer_in_fmt, get_lamport_time(), ctx->id, order.s_amount, order.s_src);
+        update_history(&ctx->history, ctx->balance, t, 0);
+        snprintf(buf, sizeof(buf), log_transfer_in_fmt, t, ctx->id, order.s_amount, order.s_src);
         log_event(buf);
         memset(&ack, 0, sizeof(ack));
         ack.s_header.s_magic = MESSAGE_MAGIC;
         ack.s_header.s_type = ACK;
-        ack.s_header.s_local_time = get_lamport_time();
+        ack.s_header.s_local_time = t;
         ack.s_header.s_payload_len = 0;
         if (send(ctx, PARENT_ID, &ack) != 0) return -1;
     }
@@ -132,7 +137,7 @@ static int done_phase(process_context *ctx) {
 
 static int send_balance_history(process_context *ctx) {
     lamport_tick(ctx);
-    update_history(&ctx->history, ctx->balance, get_lamport_time());
+    update_history(&ctx->history, ctx->balance, get_lamport_time(), 0);
     Message msg;
     memset(&msg, 0, sizeof(msg));
     uint16_t len = (uint16_t)(offsetof(BalanceHistory, s_history) + sizeof(BalanceState) * ctx->history.s_history_len);
@@ -150,7 +155,7 @@ int run_child(process_context *ctx) {
     ctx->balance = ctx->start_balances[ctx->id];
     ctx->history.s_id = ctx->id;
     ctx->history.s_history_len = 0;
-    update_history(&ctx->history, ctx->balance, get_lamport_time());
+    update_history(&ctx->history, ctx->balance, get_lamport_time(), 0);
 
     lamport_tick(ctx);
     snprintf(buf, sizeof(buf), log_started_fmt, get_lamport_time(), ctx->id, (int)getpid(), (int)getppid(), ctx->balance);
