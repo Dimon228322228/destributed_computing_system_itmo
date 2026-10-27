@@ -130,6 +130,21 @@ int receive_any_nowait(void *self, Message *msg) {
     return 1;
 }
 
+int receive_any_nowait_from(void *self, Message *msg, local_id *from) {
+    process_context *ctx = self;
+    if (ctx == NULL || msg == NULL || from == NULL) return -1;
+    for (local_id f = 0; f < ctx->n; ++f) {
+        if (f == ctx->id) continue;
+        int rc = try_receive_from(ctx, f, msg);
+        if (rc == 0) {
+            *from = f;
+            return 0;
+        }
+        if (rc < 0) return -1;
+    }
+    return 1;
+}
+
 int receive_any(void *self, Message *msg) {
     process_context *ctx = self;
     if (ctx == NULL || msg == NULL) return -1;
