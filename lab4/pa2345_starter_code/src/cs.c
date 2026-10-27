@@ -48,21 +48,27 @@ static void cs_mark_reply(process_context *ctx, local_id from) {
         ctx->cs_replied[from] = 1;
 }
 
+static void cs_fill_empty(Message *msg, MessageType type, timestamp_t t) {
+    memset(msg, 0, sizeof(*msg));
+    msg->s_header.s_magic = MESSAGE_MAGIC;
+    msg->s_header.s_type = type;
+    msg->s_header.s_local_time = t;
+    msg->s_header.s_payload_len = 0;
+}
+
 static int cs_send_empty(process_context *ctx, local_id dst, MessageType type) {
     Message msg;
-    memset(&msg, 0, sizeof(msg));
     lamport_tick(ctx);
-    msg.s_header.s_magic = MESSAGE_MAGIC;
-    msg.s_header.s_type = type;
-    msg.s_header.s_local_time = get_lamport_time();
-    msg.s_header.s_payload_len = 0;
+    cs_fill_empty(&msg, type, get_lamport_time());
     return send(ctx, dst, &msg);
 }
 
-static int cs_multicast_children(process_context *ctx, MessageType type) {
+static int cs_multicast_children_at(process_context *ctx, MessageType type, timestamp_t t) {
+    Message msg;
+    cs_fill_empty(&msg, type, t);
     for (local_id dst = 1; dst < ctx->n; ++dst) {
         if (dst == ctx->id) continue;
-        if (cs_send_empty(ctx, dst, type) != 0) return -1;
+        if (send(ctx, dst, &msg) != 0) return -1;
     }
     return 0;
 }
@@ -80,35 +86,37 @@ void cs_handle(process_context *ctx, local_id from, const Message *msg) {
     }
 }
 
+void cs_on_peer_msg(process_context *ctx, local_id from, const Message *msg) {
+    if (msg->s_header.s_type == DONE) {
+        if (from >= 1 && from < ctx->n)
+            ctx->done_got[from] = 1;
+        if (ctx->cs_req_time > 0 && msg->s_header.s_local_time > ctx->cs_req_time)
+            cs_mark_reply(ctx, from);
+        return;
+    }
+    cs_handle(ctx, from, msg);
+}
+
 int request_cs(const void *self) {
     process_context *ctx = (process_context *)self;
     if (ctx == NULL) return -1;
-    Message msg;
-    local_id from;
-
     memset(ctx->cs_replied, 0, sizeof(ctx->cs_replied));
     lamport_tick(ctx);
     ctx->cs_req_time = get_lamport_time();
     cs_enqueue(ctx, ctx->cs_req_time, ctx->id);
 
-    Message req;
-    memset(&req, 0, sizeof(req));
-    req.s_header.s_magic = MESSAGE_MAGIC;
-    req.s_header.s_type = CS_REQUEST;
-    req.s_header.s_local_time = ctx->cs_req_time;
-    req.s_header.s_payload_len = 0;
-    for (local_id dst = 1; dst < ctx->n; ++dst) {
-        if (dst == ctx->id) continue;
-        if (send(ctx, dst, &req) != 0) return -1;
-    }
+    if (cs_multicast_children_at(ctx, CS_REQUEST, ctx->cs_req_time) != 0)
+        return -1;
 
     int rc;
+    Message msg;
+    local_id from;
     while (!cs_is_head(ctx) || !cs_all_replied(ctx)) {
         rc = receive_any_nowait_from(ctx, &msg, &from);
         if (rc == 1) continue;
         if (rc < 0) return -1;
         if (from == PARENT_ID) continue;
-        cs_handle(ctx, from, &msg);
+        cs_on_peer_msg(ctx, from, &msg);
     }
     return 0;
 }
@@ -116,18 +124,8 @@ int request_cs(const void *self) {
 int release_cs(const void *self) {
     process_context *ctx = (process_context *)self;
     if (ctx == NULL) return -1;
-    Message msg;
     cs_dequeue_id(ctx, ctx->id);
     ctx->cs_req_time = 0;
     lamport_tick(ctx);
-    memset(&msg, 0, sizeof(msg));
-    msg.s_header.s_magic = MESSAGE_MAGIC;
-    msg.s_header.s_type = CS_RELEASE;
-    msg.s_header.s_local_time = get_lamport_time();
-    msg.s_header.s_payload_len = 0;
-    for (local_id dst = 1; dst < ctx->n; ++dst) {
-        if (dst == ctx->id) continue;
-        if (send(ctx, dst, &msg) != 0) return -1;
-    }
-    return 0;
+    return cs_multicast_children_at(ctx, CS_RELEASE, get_lamport_time());
 }

@@ -23,11 +23,11 @@ typedef struct {
     int cs_queue_len;
     timestamp_t cs_req_time;
     int cs_replied[MAX_PROCESS_ID + 1];
+    int done_got[MAX_PROCESS_ID + 1];
 } process_context;
 
 /* 0 — SUCCESS, 1 — WAIT or EMPTY, -1 — FAIL */
 int send_nowait(void *self, local_id dst, const Message *msg);
-int receive_any_nowait(void *self, Message *msg);
 int receive_any_nowait_from(void *self, Message *msg, local_id *from);
 
 #endif

@@ -2,7 +2,6 @@
 #include <sys/wait.h>
 
 #include "ipc.h"
-#include "lamport.h"
 #include "parent.h"
 
 static int receive_from_all_children(process_context *ctx, MessageType type) {

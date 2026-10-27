@@ -118,18 +118,6 @@ int send_nowait(void *self, local_id dst, const Message *msg) {
     return write_full(fd, buf, total, 0);
 }
 
-int receive_any_nowait(void *self, Message *msg) {
-    process_context *ctx = self;
-    if (ctx == NULL || msg == NULL) return -1;
-    for (local_id from = 0; from < ctx->n; ++from) {
-        if (from == ctx->id) continue;
-        int rc = try_receive_from(ctx, from, msg);
-        if (rc == 0) return 0;
-        if (rc < 0) return -1;
-    }
-    return 1;
-}
-
 int receive_any_nowait_from(void *self, Message *msg, local_id *from) {
     process_context *ctx = self;
     if (ctx == NULL || msg == NULL || from == NULL) return -1;
