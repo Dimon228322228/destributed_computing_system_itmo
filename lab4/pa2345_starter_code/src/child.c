@@ -45,7 +45,11 @@ int run_child(process_context *ctx) {
     snprintf(buf, sizeof(buf), log_received_all_started_fmt, get_lamport_time(), ctx->id);
     log_event(buf);
 
-    /* шаг 2: сюда цикл print / request_cs */
+    int n_iter = ctx->id * 5;
+    for (int i = 1; i <= n_iter; ++i) {
+        snprintf(buf, sizeof(buf), log_loop_operation_fmt, ctx->id, i, n_iter);
+        print(buf);
+    }
 
     lamport_tick(ctx);
     t = get_lamport_time();
